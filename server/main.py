@@ -78,8 +78,15 @@ class ConnectionManager:
         self.connection_count = 0
 
     async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.add(websocket)
+        try:
+            await asyncio.wait_for(
+                websocket.accept(),
+                timeout=5.0  # 5 second timeout for accepting connections
+            )
+            self.active_connections.add(websocket)
+        except asyncio.TimeoutError:
+            print(f"Connection timeout for client {websocket.client.host}")
+            await websocket.close(code=1001)
 
     def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
@@ -89,14 +96,21 @@ class ConnectionManager:
 
     async def broadcast(self, message: str):
         disconnected = set()
-        for connection in self.active_connections:
+        for connection in self.active_connections.copy():  # Use copy to avoid modification during iteration
             try:
-                await connection.send_text(message)
-            except Exception as e:
-                print(f"Error broadcasting to client: {e}")
+                await asyncio.wait_for(
+                    connection.send_text(message),
+                    timeout=2.0  # 2 second timeout for each broadcast
+                )
+            except (Exception, asyncio.TimeoutError) as e:
+                print(f"Error broadcasting to {connection.client.host}: {e}")
                 disconnected.add(connection)
+                try:
+                    await connection.close(code=1001)
+                except:
+                    pass
         
-        # Remove disconnected clients after iteration
+        # Remove disconnected clients
         for conn in disconnected:
             self.disconnect(conn)
 
@@ -171,25 +185,32 @@ async def temperature_monitor():
 
 @app.websocket("/")
 async def websocket_endpoint(websocket: WebSocket):
+    last_ping = datetime.now()
     try:
         await manager.connect(websocket)
         
         while True:
             try:
-                # Set timeout for receiving messages
                 message = await asyncio.wait_for(
                     websocket.receive_text(),
                     timeout=config['websocket']['timeout']
                 )
                 
-                # Validate message format
                 try:
                     data = json.loads(message)
                     if not isinstance(data, dict):
                         continue
                     
                     if data.get("type") == "ping":
+                        last_ping = datetime.now()
                         await websocket.send_json({"type": "pong"})
+                        
+                    # Check if client is still alive
+                    if (datetime.now() - last_ping).seconds > config['websocket']['timeout']:
+                        print(f"Client {websocket.client.host} timed out")
+                        await websocket.close(code=1000)
+                        break
+                        
                 except json.JSONDecodeError:
                     continue
                     
