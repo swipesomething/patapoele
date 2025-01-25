@@ -7,8 +7,6 @@ services:
       - "${SERVER_PORT:-7777}:${SERVER_PORT:-7777}"
     volumes:
       - ./server:/server
-    env_file:
-      - ./server/.env
     environment:
       - PIGPIO_HOSTNAME
       - PIGPIO_PORT
