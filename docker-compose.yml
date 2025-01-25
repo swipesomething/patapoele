@@ -1,0 +1,22 @@
+services:
+  patapi:
+    container_name: patapi
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-7777}:${SERVER_PORT:-7777}"
+    volumes:
+      - ./server:/server
+    env_file:
+      - ./server/.env
+    environment:
+      - PIGPIO_HOSTNAME
+      - PIGPIO_PORT
+      - SERVER_HOST
+      - SERVER_PORT
+      - MAX6675_SPI_CHANNEL
+      - MAX6675_SPI_BAUD
+      - MAX6675_SPI_FLAGS
+      - WS_TIMEOUT
+      - CORS_ORIGINS
+      - SAMPLING_RATE
